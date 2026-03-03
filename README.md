@@ -6,6 +6,30 @@ Upload photos from your desktop or mobile device over your local network, queue 
 
 ---
 
+## Download & Run (No .NET Required)
+
+Grab the latest pre-built release from GitHub and run it immediately — no .NET SDK or runtime needed:
+
+1. Go to the [**Releases**](https://github.com/dubeyprateek/LocalPhotoAI/releases/latest) page
+2. Download the zip for your platform:
+   - **Windows:** `LocalPhotoAI-win-x64.zip`
+   - **Linux:** `LocalPhotoAI-linux-x64.zip`
+   - **macOS:** `LocalPhotoAI-osx-x64.zip`
+3. Extract and run:
+
+```bash
+# Windows
+LocalPhotoAI.Host.exe
+
+# Linux / macOS
+chmod +x LocalPhotoAI.Host
+./LocalPhotoAI.Host
+```
+
+The app starts on `http://localhost:5100`, auto-opens your browser, and shows a QR code for mobile access.
+
+---
+
 ## What You Can Do
 
 - **Upload photos** — Drag-and-drop or tap-to-select images from any device on your LAN (supports `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`, `.heic`, `.heif`, `.tiff`, `.tif`).
@@ -221,7 +245,7 @@ storage/
 
 ```bash
 # Clone and run
-git clone <repo-url>
+git clone https://github.com/dubeyprateek/LocalPhotoAI.git
 cd LocalPhotoAI
 dotnet run --project src/LocalPhotoAI.Host
 ```
