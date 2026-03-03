@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LocalPhotoAI</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; padding: 1rem; }
+        h1 { text-align: center; margin: 1rem 0; }
+        .upload-area {
+            border: 2px dashed #aaa; border-radius: 12px; padding: 2rem;
+            text-align: center; cursor: pointer; background: #fff;
+            transition: border-color 0.2s;
+        }
+        .upload-area:hover, .upload-area.dragover { border-color: #4a90d9; }
+        .upload-area input[type="file"] { display: none; }
+        .previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+        .previews img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; }
+        button {
+            display: block; width: 100%; padding: 0.75rem; font-size: 1rem;
+            background: #4a90d9; color: #fff; border: none; border-radius: 8px;
+            cursor: pointer;
+        }
+        button:disabled { background: #999; cursor: not-allowed; }
+        .status { margin-top: 1rem; padding: 0.75rem; border-radius: 8px; }
+        .status.ok { background: #d4edda; color: #155724; }
+        .status.err { background: #f8d7da; color: #721c24; }
+        .gallery { margin-top: 2rem; }
+        .gallery h2 { margin-bottom: 0.5rem; }
+        .photo-card {
+            background: #fff; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .photo-card a { color: #4a90d9; text-decoration: none; }
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge.queued { background: #fff3cd; color: #856404; }
+        .badge.processing { background: #cce5ff; color: #004085; }
+        .badge.ready { background: #d4edda; color: #155724; }
+        .badge.failed { background: #f8d7da; color: #721c24; }
+        .qr-section { margin-top: 2rem; text-align: center; }
+        .qr-section img, .qr-section svg { max-width: 200px; margin: 1rem auto; display: block; }
+        .connection-info { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LocalPhotoAI</h1>
+
+        <div class="upload-area" id="dropZone">
+            <p>Tap to select photos or drag &amp; drop</p>
+            <input type="file" id="fileInput" multiple accept="image/*" />
+        </div>
+
+        <div class="previews" id="previews"></div>
+
+        <button id="uploadBtn" disabled>Upload Photos</button>
+
+        <div id="status" class="status" style="display:none"></div>
+
+        <div class="gallery" id="gallery">
+            <h2>Gallery</h2>
+            <div id="photoList"><p>Loading...</p></div>
+        </div>
+
+        <div class="qr-section" id="qrSection">
+            <h2>Connect from Mobile</h2>
+            <div id="qrCode"></div>
+            <p id="connectionInfo" class="connection-info"></p>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const previews = document.getElementById('previews');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const statusDiv = document.getElementById('status');
+        let selectedFiles = [];
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            previews.innerHTML = '';
+            selectedFiles.forEach(f => {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(f);
+                previews.appendChild(img);
+            });
+            uploadBtn.disabled = selectedFiles.length === 0;
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) return;
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+            statusDiv.style.display = 'none';
+
+            const formData = new FormData();
+            selectedFiles.forEach(f => formData.append('files', f));
+
+            try {
+                const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    statusDiv.className = 'status ok';
+                    statusDiv.textContent = 'Uploaded ' + data.files.length + ' photo(s). IDs: ' + data.files.map(f => f.photoId).join(', ');
+                    selectedFiles = [];
+                    previews.innerHTML = '';
+                    loadGallery();
+                } else {
+                    statusDiv.className = 'status err';
+                    statusDiv.textContent = data.detail || data.title || 'Upload failed';
+                }
+            } catch (err) {
+                statusDiv.className = 'status err';
+                statusDiv.textContent = 'Network error: ' + err.message;
+            }
+            statusDiv.style.display = 'block';
+            uploadBtn.textContent = 'Upload Photos';
+            uploadBtn.disabled = false;
+        });
+
+        async function loadGallery() {
+            const list = document.getElementById('photoList');
+            try {
+                const res = await fetch('/api/photos');
+                if (!res.ok) { list.innerHTML = '<p>Could not load gallery.</p>'; return; }
+                const photos = await res.json();
+                if (photos.length === 0) { list.innerHTML = '<p>No photos yet.</p>'; return; }
+                list.innerHTML = photos.map(p => {
+                    const status = p.versions && p.versions.length > 0 ? 'ready' : 'processing';
+                    const label = status === 'ready' ? 'Ready' : 'Processing';
+                    const link = status === 'ready'
+                        ? '<a href="/api/photos/' + p.photoId + '/download">Download</a>'
+                        : '';
+                    return '<div class="photo-card">' +
+                        '<span>' + p.originalFileName + '</span>' +
+                        '<span class="badge ' + status + '">' + label + '</span>' +
+                        link +
+                    '</div>';
+                }).join('');
+            } catch {
+                list.innerHTML = '<p>Gallery service unavailable.</p>';
+            }
+        }
+
+        async function loadQrAndConnectionInfo() {
+            try {
+                const qrRes = await fetch('/api/gateway/qr');
+                if (qrRes.ok) {
+                    const svg = await qrRes.text();
+                    document.getElementById('qrCode').innerHTML = svg;
+                }
+            } catch { /* QR not critical */ }
+
+            try {
+                const infoRes = await fetch('/api/gateway/connection-info');
+                if (infoRes.ok) {
+                    const info = await infoRes.json();
+                    const el = document.getElementById('connectionInfo');
+                    el.innerHTML = 'LAN URL: <strong>' + (info.gatewayUrl || 'N/A') + '</strong><br/>' +
+                        'Hostname: ' + info.hostname + '<br/>' +
+                        '<small>' + info.note + '</small>';
+                }
+            } catch { /* connection info not critical */ }
+        }
+
+        loadGallery();
+        loadQrAndConnectionInfo();
+        setInterval(loadGallery, 5000);
+    </script>
+</body>
+</html>
