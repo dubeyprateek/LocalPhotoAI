@@ -46,7 +46,7 @@ artifacts/
 .vscode/
 
 # Application data
-storage/
+/storage/
 
 # OS files
 .DS_Store
