@@ -8,4 +8,5 @@ public interface IPhotoStore
     Task<PhotoMetadata?> GetAsync(string photoId);
     Task<IReadOnlyList<PhotoMetadata>> GetAllAsync();
     Task UpdateAsync(PhotoMetadata photo);
+    Task<bool> DeleteAsync(string photoId);
 }

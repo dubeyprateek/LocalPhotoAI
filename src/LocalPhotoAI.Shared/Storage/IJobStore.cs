@@ -8,4 +8,5 @@ public interface IJobStore
     Task<JobRecord?> GetAsync(string jobId);
     Task<IReadOnlyList<JobRecord>> GetAllAsync();
     Task UpdateAsync(JobRecord job);
+    Task<bool> DeleteAsync(string jobId);
 }

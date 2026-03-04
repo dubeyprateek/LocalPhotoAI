@@ -44,6 +44,13 @@ public class JsonPhotoStore : IPhotoStore
         return PersistAsync();
     }
 
+    public Task<bool> DeleteAsync(string photoId)
+    {
+        var removed = _photos.TryRemove(photoId, out _);
+        if (removed) return PersistAsync().ContinueWith(_ => true);
+        return Task.FromResult(false);
+    }
+
     private void Load()
     {
         if (!File.Exists(_filePath)) return;

@@ -447,6 +447,61 @@ app.MapGet("/api/sessions/{sessionId}/qr", async (string sessionId, HttpRequest 
     return Results.Content(svgContent, "image/svg+xml");
 });
 
+// Delete a session and its associated files, photos, and jobs
+app.MapDelete("/api/sessions/{sessionId}", async (string sessionId,
+    ISessionStore sessionStore, IPhotoStore photoStore, IJobStore jobStore, ILogger<Program> logger) =>
+{
+    var session = await sessionStore.GetAsync(sessionId);
+    if (session is null)
+        return Results.NotFound();
+
+    // Delete associated photo files and metadata
+    foreach (var photoId in session.PhotoIds)
+    {
+        var photo = await photoStore.GetAsync(photoId);
+        if (photo is not null)
+        {
+            // Delete original file
+            try { if (File.Exists(photo.OriginalPath)) File.Delete(photo.OriginalPath); } catch { /* best effort */ }
+
+            // Delete version files
+            foreach (var version in photo.Versions)
+            {
+                try { if (File.Exists(version.FilePath)) File.Delete(version.FilePath); } catch { /* best effort */ }
+            }
+
+            await photoStore.DeleteAsync(photoId);
+        }
+    }
+
+    // Delete associated job metadata
+    foreach (var jobId in session.JobIds)
+    {
+        await jobStore.DeleteAsync(jobId);
+    }
+
+    // Delete session folders from disk
+    if (!string.IsNullOrEmpty(session.InputFolder))
+    {
+        try { if (Directory.Exists(session.InputFolder)) Directory.Delete(session.InputFolder, recursive: true); } catch { /* best effort */ }
+    }
+    if (!string.IsNullOrEmpty(session.OutputFolder))
+    {
+        try { if (Directory.Exists(session.OutputFolder)) Directory.Delete(session.OutputFolder, recursive: true); } catch { /* best effort */ }
+    }
+    // Try to delete the parent session folder if empty
+    if (!string.IsNullOrEmpty(session.FolderName))
+    {
+        var sessionDir = Path.Combine(storagePath, "sessions", session.FolderName);
+        try { if (Directory.Exists(sessionDir) && !Directory.EnumerateFileSystemEntries(sessionDir).Any()) Directory.Delete(sessionDir); } catch { /* best effort */ }
+    }
+
+    await sessionStore.DeleteAsync(sessionId);
+    logger.LogInformation("Deleted session {SessionId} and its files", sessionId);
+
+    return Results.NoContent();
+});
+
 app.Run();
 
 // Expose the auto-generated Program class for WebApplicationFactory in tests

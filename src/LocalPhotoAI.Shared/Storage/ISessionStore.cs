@@ -8,4 +8,5 @@ public interface ISessionStore
     Task<SessionRecord?> GetAsync(string sessionId);
     Task<IReadOnlyList<SessionRecord>> GetAllAsync();
     Task UpdateAsync(SessionRecord session);
+    Task<bool> DeleteAsync(string sessionId);
 }

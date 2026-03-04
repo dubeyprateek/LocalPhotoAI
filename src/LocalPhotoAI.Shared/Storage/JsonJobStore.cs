@@ -44,6 +44,13 @@ public class JsonJobStore : IJobStore
         return PersistAsync();
     }
 
+    public Task<bool> DeleteAsync(string jobId)
+    {
+        var removed = _jobs.TryRemove(jobId, out _);
+        if (removed) return PersistAsync().ContinueWith(_ => true);
+        return Task.FromResult(false);
+    }
+
     private void Load()
     {
         if (!File.Exists(_filePath)) return;

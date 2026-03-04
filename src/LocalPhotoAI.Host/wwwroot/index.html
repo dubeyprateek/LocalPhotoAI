@@ -18,8 +18,8 @@
         }
         .upload-area:hover, .upload-area.dragover { border-color: #4a90d9; }
         .upload-area input[type="file"] { display: none; }
-        .previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
-        .previews img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; }
+        .previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; max-height: 220px; overflow-y: auto; padding: 0.25rem; }
+        .previews img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
         textarea {
             width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ccc;
             border-radius: 8px; font-family: inherit; resize: vertical; min-height: 80px;
@@ -70,10 +70,17 @@
         .session-card:hover { border-color: #4a90d9; }
         .session-card h3 { margin-bottom: 0.25rem; }
         .session-card .meta { font-size: 0.85rem; color: #666; }
-        .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
-        .result-item { background: #fff; border-radius: 8px; padding: 0.5rem; text-align: center; }
+        .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; margin-top: 0.75rem; max-height: 400px; overflow-y: auto; padding: 0.25rem; }
+        .result-item { background: #fff; border-radius: 8px; padding: 0.5rem; text-align: center; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s, box-shadow 0.2s; user-select: none; }
+        .result-item:hover { border-color: #b0d0f0; }
+        .result-item.selected { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.3); }
+        .result-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; }
         .result-item .file-name { font-size: 0.8rem; color: #666; margin-top: 0.25rem; word-break: break-all; }
-        .result-item a { display: inline-block; margin-top: 0.25rem; font-size: 0.85rem; color: #4a90d9; text-decoration: none; }
+        .result-item .select-check { font-size: 0.75rem; color: #4a90d9; margin-top: 0.25rem; }
+        .download-toolbar { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+        .download-toolbar .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.85rem; border-radius: 6px; }
+        .download-toolbar .count { font-size: 0.8rem; color: #666; margin-left: 0.5rem; }
+        .result-item .placeholder-thumb { width: 100%; aspect-ratio: 1; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: #e9ecef; color: #adb5bd; font-size: 2rem; }
     </style>
 </head>
 <body>
@@ -122,6 +129,12 @@
                     <button id="uploadBtn" class="btn-full" disabled>Upload &amp; Process</button>
                 </div>
 
+                <!-- Input gallery: shown during processing so user can see their uploaded images -->
+                <div id="inputGallery" class="hidden">
+                    <h3>Input Photos</h3>
+                    <div class="previews" id="inputPreviews"></div>
+                </div>
+
                 <!-- Step 3: Processing / Results -->
                 <div id="step3" class="hidden">
                     <div id="processingStatus">
@@ -130,9 +143,14 @@
                     <div id="sessionResults" class="hidden">
                         <h3 id="sessionTitle"></h3>
                         <p id="sessionPromptDisplay" style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;"></p>
+                        <div class="download-toolbar" id="downloadToolbar" style="display:none;">
+                            <button class="btn btn-sm" id="downloadAllBtn">Download All</button>
+                            <button class="btn btn-sm btn-secondary" id="downloadSelectedBtn" disabled>Download Selected</button>
+                            <span class="count" id="selectionCount"></span>
+                        </div>
                         <div id="resultGrid" class="result-grid"></div>
                     </div>
-                    <div class="qr-section" id="sessionQrSection" class="hidden">
+                    <div class="qr-section hidden" id="sessionQrSection">
                         <h3>Scan to view on mobile</h3>
                         <div id="sessionQrCode"></div>
                     </div>
@@ -170,6 +188,11 @@
                 <h2 id="svTitle"></h2>
                 <p id="svPrompt" style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;"></p>
                 <span id="svStatus" class="badge"></span>
+                <div class="download-toolbar" id="svDownloadToolbar" style="display:none;">
+                    <button class="btn btn-sm" id="svDownloadAllBtn">Download All</button>
+                    <button class="btn btn-sm btn-secondary" id="svDownloadSelectedBtn" disabled>Download Selected</button>
+                    <span class="count" id="svSelectionCount"></span>
+                </div>
                 <div id="svResultGrid" class="result-grid"></div>
             </div>
             <div style="text-align:center;margin-top:1rem;">
@@ -183,6 +206,8 @@
         let currentSessionId = null;
         let selectedFiles = [];
         let sessionPollTimer = null;
+        let selectedPhotos = new Set();
+        let downloadedPhotos = new Set();
 
         // Check if viewing a specific session (from QR scan)
         const urlParams = new URLSearchParams(window.location.search);
@@ -318,8 +343,10 @@
                 const data = await res.json();
                 if (res.ok) {
                     showStatus('Uploaded ' + data.files.length + ' photo(s). Processing started.', true);
-                    selectedFiles = [];
-                    previews.innerHTML = '';
+                    // Copy input thumbnails to the persistent input gallery
+                    const inputPreviews = document.getElementById('inputPreviews');
+                    inputPreviews.innerHTML = previews.innerHTML;
+                    document.getElementById('inputGallery').classList.remove('hidden');
                     setStep(3);
                     startPollingSession(currentSessionId);
                 } else {
@@ -352,6 +379,7 @@
                 const titleEl = isMobileView ? document.getElementById('svTitle') : document.getElementById('sessionTitle');
                 const promptEl = isMobileView ? document.getElementById('svPrompt') : document.getElementById('sessionPromptDisplay');
                 const gridEl = isMobileView ? document.getElementById('svResultGrid') : document.getElementById('resultGrid');
+                const toolbarEl = isMobileView ? document.getElementById('svDownloadToolbar') : document.getElementById('downloadToolbar');
 
                 titleEl.textContent = data.title || 'Session';
                 promptEl.textContent = data.refinedPrompt || '';
@@ -363,15 +391,35 @@
                 }
 
                 const photos = data.photos || [];
+                const outputPhotos = photos.filter(p => p.hasOutput);
+
+                // Show download toolbar when there are output photos
+                if (outputPhotos.length > 0) {
+                    toolbarEl.style.display = 'flex';
+                } else {
+                    toolbarEl.style.display = 'none';
+                }
+
                 gridEl.innerHTML = photos.map(p => {
-                    const hasOutput = p.hasOutput;
-                    return '<div class="result-item">' +
-                        '<div class="file-name">' + p.originalFileName + '</div>' +
-                        (hasOutput
-                            ? '<a href="' + p.downloadUrl + '">⬇ Download</a>'
-                            : '<span class="badge processing">Processing</span>') +
-                    '</div>';
+                    const isSelected = selectedPhotos.has(p.photoId);
+                    const selectedClass = isSelected ? ' selected' : '';
+                    const thumbUrl = p.downloadUrl;
+                    if (p.hasOutput) {
+                        return '<div class="result-item' + selectedClass + '" data-photo-id="' + p.photoId + '" data-download-url="' + thumbUrl + '" onclick="togglePhotoSelection(this)">' +
+                            '<img src="' + thumbUrl + '" alt="' + p.originalFileName + '" loading="lazy" />' +
+                            '<div class="file-name">' + p.originalFileName + '</div>' +
+                            '<div class="select-check">' + (isSelected ? 'Selected' : 'Tap to select') + '</div>' +
+                        '</div>';
+                    } else {
+                        return '<div class="result-item">' +
+                            '<div class="placeholder-thumb">&#9881;</div>' +
+                            '<div class="file-name">' + p.originalFileName + '</div>' +
+                            '<span class="badge processing">Processing</span>' +
+                        '</div>';
+                    }
                 }).join('');
+
+                updateSelectionCount(isMobileView);
 
                 if (data.status === 'Completed' || data.status === 'Failed') {
                     if (sessionPollTimer) clearInterval(sessionPollTimer);
@@ -391,6 +439,69 @@
             } catch { /* retry on next interval */ }
         }
 
+        // Toggle photo selection in result gallery
+        function togglePhotoSelection(el) {
+            const photoId = el.dataset.photoId;
+            if (!photoId) return;
+            if (selectedPhotos.has(photoId)) {
+                selectedPhotos.delete(photoId);
+                el.classList.remove('selected');
+                el.querySelector('.select-check').textContent = 'Tap to select';
+            } else {
+                selectedPhotos.add(photoId);
+                el.classList.add('selected');
+                el.querySelector('.select-check').textContent = 'Selected';
+            }
+            // Determine which view we're in
+            const isMobile = !!el.closest('#sessionView');
+            updateSelectionCount(isMobile);
+        }
+
+        function updateSelectionCount(isMobileView) {
+            const countEl = isMobileView ? document.getElementById('svSelectionCount') : document.getElementById('selectionCount');
+            const dlBtn = isMobileView ? document.getElementById('svDownloadSelectedBtn') : document.getElementById('downloadSelectedBtn');
+            const count = selectedPhotos.size;
+            countEl.textContent = count > 0 ? count + ' selected' : '';
+            dlBtn.disabled = count === 0;
+        }
+
+        // Download helpers
+        function downloadFile(url, fileName, photoId) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName || '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            if (photoId) downloadedPhotos.add(photoId);
+        }
+
+        function downloadAllPhotos(gridId) {
+            const items = document.querySelectorAll('#' + gridId + ' .result-item[data-download-url]');
+            items.forEach((item, i) => {
+                setTimeout(() => {
+                    downloadFile(item.dataset.downloadUrl, item.querySelector('.file-name').textContent, item.dataset.photoId);
+                }, i * 300);
+            });
+        }
+
+        function downloadSelectedPhotos(gridId) {
+            const items = document.querySelectorAll('#' + gridId + ' .result-item.selected[data-download-url]');
+            items.forEach((item, i) => {
+                setTimeout(() => {
+                    downloadFile(item.dataset.downloadUrl, item.querySelector('.file-name').textContent, item.dataset.photoId);
+                }, i * 300);
+            });
+        }
+
+        // Download button event listeners (main view)
+        document.getElementById('downloadAllBtn').addEventListener('click', () => downloadAllPhotos('resultGrid'));
+        document.getElementById('downloadSelectedBtn').addEventListener('click', () => downloadSelectedPhotos('resultGrid'));
+
+        // Download button event listeners (mobile/QR view)
+        document.getElementById('svDownloadAllBtn').addEventListener('click', () => downloadAllPhotos('svResultGrid'));
+        document.getElementById('svDownloadSelectedBtn').addEventListener('click', () => downloadSelectedPhotos('svResultGrid'));
+
         async function loadSessionQr(sessionId) {
             try {
                 const res = await fetch(`/api/sessions/${sessionId}/qr`);
@@ -403,14 +514,43 @@
         }
 
         // New session button
-        document.getElementById('newSessionBtn').addEventListener('click', () => {
+        document.getElementById('newSessionBtn').addEventListener('click', async () => {
+            // Clean up old session files that were not downloaded
+            if (currentSessionId) {
+                await cleanupSession(currentSessionId);
+            }
             currentSessionId = null;
+            selectedPhotos.clear();
+            downloadedPhotos.clear();
+            selectedFiles = [];
+            previews.innerHTML = '';
+            document.getElementById('inputPreviews').innerHTML = '';
+            document.getElementById('inputGallery').classList.add('hidden');
             promptInput.value = '';
             document.getElementById('refinedSection').classList.add('hidden');
             document.getElementById('sessionQrSection').classList.add('hidden');
+            document.getElementById('downloadToolbar').style.display = 'none';
             if (sessionPollTimer) clearInterval(sessionPollTimer);
             setStep(1);
+            loadSessions();
         });
+
+        async function cleanupSession(sessionId) {
+            try {
+                // Check if there are any non-downloaded output photos
+                const res = await fetch(`/api/sessions/${sessionId}/results`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const photos = data.photos || [];
+                const allDownloaded = photos.every(p => !p.hasOutput || downloadedPhotos.has(p.photoId));
+
+                if (allDownloaded) {
+                    // All outputs were downloaded (or none existed) -- delete everything
+                    await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+                }
+                // If not all downloaded, keep the session intact
+            } catch { /* cleanup is best-effort */ }
+        }
 
         // Load past sessions
         async function loadSessions() {
@@ -436,6 +576,10 @@
 
         function viewSession(sessionId) {
             currentSessionId = sessionId;
+            selectedPhotos.clear();
+            downloadedPhotos.clear();
+            document.getElementById('inputPreviews').innerHTML = '';
+            document.getElementById('inputGallery').classList.add('hidden');
             setStep(3);
             startPollingSession(sessionId);
         }

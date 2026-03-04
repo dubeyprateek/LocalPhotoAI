@@ -44,6 +44,13 @@ public class JsonSessionStore : ISessionStore
         return PersistAsync();
     }
 
+    public Task<bool> DeleteAsync(string sessionId)
+    {
+        var removed = _sessions.TryRemove(sessionId, out _);
+        if (removed) return PersistAsync().ContinueWith(_ => true);
+        return Task.FromResult(false);
+    }
+
     private void Load()
     {
         if (!File.Exists(_filePath)) return;

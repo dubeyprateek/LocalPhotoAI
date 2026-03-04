@@ -4,6 +4,13 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>LocalPhotoAI.Shared</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>dubeyprateek</Authors>
+    <Description>Shared library for LocalPhotoAI -- image processing pipelines (SkiaSharp), prompt refinement (OpenAI), job queue, storage, and security components.</Description>
+    <PackageTags>image-processing;skiasharp;ai;photo;pipeline</PackageTags>
+    <RepositoryUrl>https://github.com/dubeyprateek/LocalPhotoAI</RepositoryUrl>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
