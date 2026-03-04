@@ -9,6 +9,8 @@
         body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; }
         .container { max-width: 800px; margin: 0 auto; padding: 1rem; }
         h1 { text-align: center; margin: 1rem 0; }
+        h2 { margin-bottom: 0.5rem; }
+        .section { background: #fff; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
         .upload-area {
             border: 2px dashed #aaa; border-radius: 12px; padding: 2rem;
             text-align: center; cursor: pointer; background: #fff;
@@ -18,17 +20,29 @@
         .upload-area input[type="file"] { display: none; }
         .previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
         .previews img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; }
-        button {
-            display: block; width: 100%; padding: 0.75rem; font-size: 1rem;
+        textarea {
+            width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ccc;
+            border-radius: 8px; font-family: inherit; resize: vertical; min-height: 80px;
+        }
+        button, .btn {
+            display: inline-block; padding: 0.75rem 1.25rem; font-size: 1rem;
             background: #4a90d9; color: #fff; border: none; border-radius: 8px;
-            cursor: pointer;
+            cursor: pointer; text-decoration: none; text-align: center;
         }
         button:disabled { background: #999; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .btn-full { display: block; width: 100%; }
+        .btn-group { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
         .status { margin-top: 1rem; padding: 0.75rem; border-radius: 8px; }
         .status.ok { background: #d4edda; color: #155724; }
         .status.err { background: #f8d7da; color: #721c24; }
-        .gallery { margin-top: 2rem; }
-        .gallery h2 { margin-bottom: 0.5rem; }
+        .refined-prompt {
+            background: #e8f4fd; padding: 1rem; border-radius: 8px; margin: 0.75rem 0;
+            border-left: 4px solid #4a90d9;
+        }
+        .refined-prompt p { font-size: 0.85rem; color: #666; margin-bottom: 0.25rem; }
+        .refined-prompt .text { font-size: 0.95rem; color: #333; }
+        .gallery { margin-top: 1rem; }
         .photo-card {
             background: #fff; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem;
             display: flex; justify-content: space-between; align-items: center;
@@ -39,46 +53,236 @@
         .badge.processing { background: #cce5ff; color: #004085; }
         .badge.ready { background: #d4edda; color: #155724; }
         .badge.failed { background: #f8d7da; color: #721c24; }
-        .qr-section { margin-top: 2rem; text-align: center; }
-        .qr-section img, .qr-section svg { max-width: 200px; margin: 1rem auto; display: block; }
+        .badge.draft { background: #e2e3e5; color: #383d41; }
+        .badge.completed { background: #d4edda; color: #155724; }
+        .qr-section { margin-top: 1rem; text-align: center; }
+        .qr-section svg { max-width: 200px; margin: 1rem auto; display: block; }
         .connection-info { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
+        .step-indicator { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .step { flex: 1; text-align: center; padding: 0.5rem; border-radius: 8px; background: #e2e3e5; color: #666; font-size: 0.85rem; }
+        .step.active { background: #4a90d9; color: #fff; }
+        .step.done { background: #d4edda; color: #155724; }
+        .hidden { display: none; }
+        .session-card {
+            background: #fff; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;
+            border: 1px solid #eee; cursor: pointer; transition: border-color 0.2s;
+        }
+        .session-card:hover { border-color: #4a90d9; }
+        .session-card h3 { margin-bottom: 0.25rem; }
+        .session-card .meta { font-size: 0.85rem; color: #666; }
+        .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+        .result-item { background: #fff; border-radius: 8px; padding: 0.5rem; text-align: center; }
+        .result-item .file-name { font-size: 0.8rem; color: #666; margin-top: 0.25rem; word-break: break-all; }
+        .result-item a { display: inline-block; margin-top: 0.25rem; font-size: 0.85rem; color: #4a90d9; text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>LocalPhotoAI</h1>
 
-        <div class="upload-area" id="dropZone">
-            <p>Tap to select photos or drag &amp; drop</p>
-            <input type="file" id="fileInput" multiple accept="image/*" />
+        <!-- Main View (default) -->
+        <div id="mainView">
+            <div class="section">
+                <h2>New Session</h2>
+                <div class="step-indicator">
+                    <div class="step active" id="step1Label">1. Describe</div>
+                    <div class="step" id="step2Label">2. Upload</div>
+                    <div class="step" id="step3Label">3. Results</div>
+                </div>
+
+                <!-- Step 1: Prompt -->
+                <div id="step1">
+                    <label for="promptInput"><strong>What do you want to do with your photos?</strong></label>
+                    <textarea id="promptInput" placeholder="e.g., Remove the background and make it white, enhance colors, add a vintage filter..."></textarea>
+                    <div class="btn-group">
+                        <button id="refineBtn">Refine Prompt</button>
+                    </div>
+                    <div id="refinedSection" class="hidden">
+                        <div class="refined-prompt">
+                            <p>AI-refined prompt:</p>
+                            <div class="text" id="refinedText"></div>
+                        </div>
+                        <p style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;">
+                            Not satisfied? Edit your prompt above and refine again, or proceed.
+                        </p>
+                        <div class="btn-group">
+                            <button id="acceptPromptBtn">Accept &amp; Continue</button>
+                            <button id="refineAgainBtn" class="btn-secondary">Refine Again</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Upload -->
+                <div id="step2" class="hidden">
+                    <div class="upload-area" id="dropZone">
+                        <p>Tap to select photos or drag &amp; drop</p>
+                        <input type="file" id="fileInput" multiple accept="image/*" />
+                    </div>
+                    <div class="previews" id="previews"></div>
+                    <button id="uploadBtn" class="btn-full" disabled>Upload &amp; Process</button>
+                </div>
+
+                <!-- Step 3: Processing / Results -->
+                <div id="step3" class="hidden">
+                    <div id="processingStatus">
+                        <p>Processing your photos...</p>
+                    </div>
+                    <div id="sessionResults" class="hidden">
+                        <h3 id="sessionTitle"></h3>
+                        <p id="sessionPromptDisplay" style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;"></p>
+                        <div id="resultGrid" class="result-grid"></div>
+                    </div>
+                    <div class="qr-section" id="sessionQrSection" class="hidden">
+                        <h3>Scan to view on mobile</h3>
+                        <div id="sessionQrCode"></div>
+                    </div>
+                    <div class="btn-group" style="margin-top:1rem;">
+                        <button id="newSessionBtn" class="btn-secondary">Start New Session</button>
+                    </div>
+                </div>
+
+                <div id="status" class="status" style="display:none"></div>
+            </div>
+
+            <!-- Past Sessions -->
+            <div class="section">
+                <h2>Past Sessions</h2>
+                <div id="sessionList"><p>Loading...</p></div>
+            </div>
+
+            <!-- Legacy Gallery -->
+            <div class="section gallery" id="gallery">
+                <h2>All Photos</h2>
+                <div id="photoList"><p>Loading...</p></div>
+            </div>
+
+            <!-- QR / Connection Info -->
+            <div class="section qr-section" id="qrSection">
+                <h2>Connect from Mobile</h2>
+                <div id="qrCode"></div>
+                <p id="connectionInfo" class="connection-info"></p>
+            </div>
         </div>
 
-        <div class="previews" id="previews"></div>
-
-        <button id="uploadBtn" disabled>Upload Photos</button>
-
-        <div id="status" class="status" style="display:none"></div>
-
-        <div class="gallery" id="gallery">
-            <h2>Gallery</h2>
-            <div id="photoList"><p>Loading...</p></div>
-        </div>
-
-        <div class="qr-section" id="qrSection">
-            <h2>Connect from Mobile</h2>
-            <div id="qrCode"></div>
-            <p id="connectionInfo" class="connection-info"></p>
+        <!-- Session Results View (for mobile/QR) -->
+        <div id="sessionView" class="hidden">
+            <div class="section">
+                <h2 id="svTitle"></h2>
+                <p id="svPrompt" style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;"></p>
+                <span id="svStatus" class="badge"></span>
+                <div id="svResultGrid" class="result-grid"></div>
+            </div>
+            <div style="text-align:center;margin-top:1rem;">
+                <a href="/" class="btn btn-secondary">← Back to Home</a>
+            </div>
         </div>
     </div>
 
     <script>
+        // State
+        let currentSessionId = null;
+        let selectedFiles = [];
+        let sessionPollTimer = null;
+
+        // Check if viewing a specific session (from QR scan)
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewSessionId = urlParams.get('session');
+        if (viewSessionId) {
+            document.getElementById('mainView').classList.add('hidden');
+            document.getElementById('sessionView').classList.remove('hidden');
+            loadSessionResults(viewSessionId, true);
+        }
+
+        // DOM refs
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const previews = document.getElementById('previews');
         const uploadBtn = document.getElementById('uploadBtn');
         const statusDiv = document.getElementById('status');
-        let selectedFiles = [];
+        const promptInput = document.getElementById('promptInput');
 
+        // Step 1: Prompt refinement
+        document.getElementById('refineBtn').addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+            await refinePrompt(prompt);
+        });
+
+        document.getElementById('refineAgainBtn').addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+            if (currentSessionId) {
+                await refineSessionPrompt(currentSessionId, prompt);
+            } else {
+                await refinePrompt(prompt);
+            }
+        });
+
+        async function refinePrompt(prompt) {
+            try {
+                const res = await fetch('/api/prompt/refine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('refinedText').textContent = data.refinedPrompt;
+                    document.getElementById('refinedSection').classList.remove('hidden');
+                }
+            } catch (err) {
+                showStatus('Error refining prompt: ' + err.message, false);
+            }
+        }
+
+        async function refineSessionPrompt(sessionId, prompt) {
+            try {
+                const res = await fetch(`/api/sessions/${sessionId}/refine`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('refinedText').textContent = data.refinedPrompt;
+                }
+            } catch (err) {
+                showStatus('Error refining prompt: ' + err.message, false);
+            }
+        }
+
+        // Accept prompt and create session
+        document.getElementById('acceptPromptBtn').addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+
+            try {
+                const res = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                const session = await res.json();
+                if (res.ok) {
+                    currentSessionId = session.sessionId;
+                    setStep(2);
+                }
+            } catch (err) {
+                showStatus('Error creating session: ' + err.message, false);
+            }
+        });
+
+        // Step navigation
+        function setStep(step) {
+            document.getElementById('step1').classList.toggle('hidden', step !== 1);
+            document.getElementById('step2').classList.toggle('hidden', step !== 2);
+            document.getElementById('step3').classList.toggle('hidden', step !== 3);
+            document.getElementById('step1Label').className = 'step' + (step === 1 ? ' active' : step > 1 ? ' done' : '');
+            document.getElementById('step2Label').className = 'step' + (step === 2 ? ' active' : step > 2 ? ' done' : '');
+            document.getElementById('step3Label').className = 'step' + (step === 3 ? ' active' : '');
+        }
+
+        // Step 2: File upload
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -101,7 +305,7 @@
         }
 
         uploadBtn.addEventListener('click', async () => {
-            if (selectedFiles.length === 0) return;
+            if (selectedFiles.length === 0 || !currentSessionId) return;
             uploadBtn.disabled = true;
             uploadBtn.textContent = 'Uploading...';
             statusDiv.style.display = 'none';
@@ -110,27 +314,140 @@
             selectedFiles.forEach(f => formData.append('files', f));
 
             try {
-                const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+                const res = await fetch(`/api/sessions/${currentSessionId}/upload`, { method: 'POST', body: formData });
                 const data = await res.json();
                 if (res.ok) {
-                    statusDiv.className = 'status ok';
-                    statusDiv.textContent = 'Uploaded ' + data.files.length + ' photo(s). IDs: ' + data.files.map(f => f.photoId).join(', ');
+                    showStatus('Uploaded ' + data.files.length + ' photo(s). Processing started.', true);
                     selectedFiles = [];
                     previews.innerHTML = '';
-                    loadGallery();
+                    setStep(3);
+                    startPollingSession(currentSessionId);
                 } else {
-                    statusDiv.className = 'status err';
-                    statusDiv.textContent = data.detail || data.title || 'Upload failed';
+                    showStatus(data.detail || 'Upload failed', false);
                 }
             } catch (err) {
-                statusDiv.className = 'status err';
-                statusDiv.textContent = 'Network error: ' + err.message;
+                showStatus('Network error: ' + err.message, false);
             }
-            statusDiv.style.display = 'block';
-            uploadBtn.textContent = 'Upload Photos';
+            uploadBtn.textContent = 'Upload & Process';
             uploadBtn.disabled = false;
         });
 
+        // Step 3: Poll session results
+        function startPollingSession(sessionId) {
+            document.getElementById('processingStatus').classList.remove('hidden');
+            document.getElementById('sessionResults').classList.add('hidden');
+
+            if (sessionPollTimer) clearInterval(sessionPollTimer);
+            sessionPollTimer = setInterval(() => loadSessionResults(sessionId, false), 3000);
+            loadSessionResults(sessionId, false);
+            loadSessionQr(sessionId);
+        }
+
+        async function loadSessionResults(sessionId, isMobileView) {
+            try {
+                const res = await fetch(`/api/sessions/${sessionId}/results`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const titleEl = isMobileView ? document.getElementById('svTitle') : document.getElementById('sessionTitle');
+                const promptEl = isMobileView ? document.getElementById('svPrompt') : document.getElementById('sessionPromptDisplay');
+                const gridEl = isMobileView ? document.getElementById('svResultGrid') : document.getElementById('resultGrid');
+
+                titleEl.textContent = data.title || 'Session';
+                promptEl.textContent = data.refinedPrompt || '';
+
+                if (isMobileView) {
+                    const statusEl = document.getElementById('svStatus');
+                    statusEl.textContent = data.status;
+                    statusEl.className = 'badge ' + (data.status === 'Completed' ? 'completed' : data.status === 'Failed' ? 'failed' : 'processing');
+                }
+
+                const photos = data.photos || [];
+                gridEl.innerHTML = photos.map(p => {
+                    const hasOutput = p.hasOutput;
+                    return '<div class="result-item">' +
+                        '<div class="file-name">' + p.originalFileName + '</div>' +
+                        (hasOutput
+                            ? '<a href="' + p.downloadUrl + '">⬇ Download</a>'
+                            : '<span class="badge processing">Processing</span>') +
+                    '</div>';
+                }).join('');
+
+                if (data.status === 'Completed' || data.status === 'Failed') {
+                    if (sessionPollTimer) clearInterval(sessionPollTimer);
+                    if (!isMobileView) {
+                        document.getElementById('processingStatus').classList.add('hidden');
+                        document.getElementById('sessionResults').classList.remove('hidden');
+                    }
+                    loadSessions();
+                } else if (!isMobileView) {
+                    document.getElementById('processingStatus').classList.remove('hidden');
+                    document.getElementById('sessionResults').classList.remove('hidden');
+                }
+
+                if (isMobileView && (data.status === 'Processing' || data.status === 'Uploading')) {
+                    setTimeout(() => loadSessionResults(sessionId, true), 3000);
+                }
+            } catch { /* retry on next interval */ }
+        }
+
+        async function loadSessionQr(sessionId) {
+            try {
+                const res = await fetch(`/api/sessions/${sessionId}/qr`);
+                if (res.ok) {
+                    const svg = await res.text();
+                    document.getElementById('sessionQrCode').innerHTML = svg;
+                    document.getElementById('sessionQrSection').classList.remove('hidden');
+                }
+            } catch { /* QR not critical */ }
+        }
+
+        // New session button
+        document.getElementById('newSessionBtn').addEventListener('click', () => {
+            currentSessionId = null;
+            promptInput.value = '';
+            document.getElementById('refinedSection').classList.add('hidden');
+            document.getElementById('sessionQrSection').classList.add('hidden');
+            if (sessionPollTimer) clearInterval(sessionPollTimer);
+            setStep(1);
+        });
+
+        // Load past sessions
+        async function loadSessions() {
+            const list = document.getElementById('sessionList');
+            try {
+                const res = await fetch('/api/sessions');
+                if (!res.ok) { list.innerHTML = '<p>Could not load sessions.</p>'; return; }
+                const sessions = await res.json();
+                if (sessions.length === 0) { list.innerHTML = '<p>No sessions yet.</p>'; return; }
+
+                list.innerHTML = sessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(s => {
+                    const statusClass = s.status === 'Completed' ? 'completed' : s.status === 'Failed' ? 'failed' : s.status === 'Processing' ? 'processing' : 'draft';
+                    return '<div class="session-card" onclick="viewSession(\'' + s.sessionId + '\')">' +
+                        '<h3>' + (s.title || 'Untitled') + ' <span class="badge ' + statusClass + '">' + s.status + '</span></h3>' +
+                        '<div class="meta">' + new Date(s.createdAt).toLocaleString() + ' · ' + s.photoIds.length + ' photo(s)</div>' +
+                        '<div class="meta" style="margin-top:0.25rem;">' + (s.userPrompt || '').substring(0, 80) + '</div>' +
+                    '</div>';
+                }).join('');
+            } catch {
+                list.innerHTML = '<p>Service unavailable.</p>';
+            }
+        }
+
+        function viewSession(sessionId) {
+            currentSessionId = sessionId;
+            setStep(3);
+            startPollingSession(sessionId);
+        }
+
+        // Utility
+        function showStatus(msg, ok) {
+            statusDiv.className = 'status ' + (ok ? 'ok' : 'err');
+            statusDiv.textContent = msg;
+            statusDiv.style.display = 'block';
+        }
+
+        // Legacy gallery
         async function loadGallery() {
             const list = document.getElementById('photoList');
             try {
@@ -176,9 +493,13 @@
             } catch { /* connection info not critical */ }
         }
 
-        loadGallery();
-        loadQrAndConnectionInfo();
-        setInterval(loadGallery, 5000);
+        // Init
+        if (!viewSessionId) {
+            loadGallery();
+            loadSessions();
+            loadQrAndConnectionInfo();
+            setInterval(loadGallery, 5000);
+        }
     </script>
 </body>
 </html>

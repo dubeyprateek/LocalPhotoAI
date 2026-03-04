@@ -11,4 +11,6 @@ public interface IImagePipeline
 {
     string Name { get; }
     Task<PipelineResult> RunAsync(string inputPath, string outputDir, CancellationToken cancellationToken = default);
+    Task<PipelineResult> RunAsync(string inputPath, string outputDir, string? prompt, CancellationToken cancellationToken = default)
+        => RunAsync(inputPath, outputDir, cancellationToken);
 }

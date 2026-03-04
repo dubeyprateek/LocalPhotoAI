@@ -11,6 +11,7 @@ public class PhotoProcessingWorker : BackgroundService
     private readonly IJobQueue _queue;
     private readonly IJobStore _jobStore;
     private readonly IPhotoStore _photoStore;
+    private readonly ISessionStore _sessionStore;
     private readonly IImagePipeline _pipeline;
     private readonly string _storagePath;
 
@@ -19,6 +20,7 @@ public class PhotoProcessingWorker : BackgroundService
         IJobQueue queue,
         IJobStore jobStore,
         IPhotoStore photoStore,
+        ISessionStore sessionStore,
         IImagePipeline pipeline,
         IConfiguration configuration)
     {
@@ -26,6 +28,7 @@ public class PhotoProcessingWorker : BackgroundService
         _queue = queue;
         _jobStore = jobStore;
         _photoStore = photoStore;
+        _sessionStore = sessionStore;
         _pipeline = pipeline;
         _storagePath = configuration.GetValue<string>("StoragePath")
             ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
@@ -71,8 +74,20 @@ public class PhotoProcessingWorker : BackgroundService
 
             try
             {
-                var outputDir = Path.Combine(_storagePath, "edited", photo.PhotoId);
-                var result = await _pipeline.RunAsync(photo.OriginalPath, outputDir, stoppingToken);
+                // Determine output directory: session-based or legacy
+                string outputDir;
+                if (message.SessionId is not null)
+                {
+                    var session = await _sessionStore.GetAsync(message.SessionId);
+                    outputDir = session?.OutputFolder
+                        ?? Path.Combine(_storagePath, "edited", photo.PhotoId);
+                }
+                else
+                {
+                    outputDir = Path.Combine(_storagePath, "edited", photo.PhotoId);
+                }
+
+                var result = await _pipeline.RunAsync(photo.OriginalPath, outputDir, message.Prompt, stoppingToken);
 
                 if (result.Success)
                 {
@@ -111,6 +126,37 @@ public class PhotoProcessingWorker : BackgroundService
             {
                 _logger.LogError(ex, "Failed to persist final status for job {JobId}", job.JobId);
             }
+
+            // Update session status if all jobs are done
+            if (message.SessionId is not null)
+            {
+                await TryUpdateSessionStatusAsync(message.SessionId);
+            }
+        }
+    }
+
+    private async Task TryUpdateSessionStatusAsync(string sessionId)
+    {
+        try
+        {
+            var session = await _sessionStore.GetAsync(sessionId);
+            if (session is null) return;
+
+            var allJobs = await Task.WhenAll(session.JobIds.Select(id => _jobStore.GetAsync(id)));
+            var jobs = allJobs.Where(j => j is not null).ToList();
+
+            if (jobs.All(j => j!.Status is JobStatus.Succeeded or JobStatus.Failed))
+            {
+                session.Status = jobs.Any(j => j!.Status == JobStatus.Failed)
+                    ? SessionStatus.Failed
+                    : SessionStatus.Completed;
+                session.CompletedAt = DateTime.UtcNow;
+                await _sessionStore.UpdateAsync(session);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update session {SessionId} status", sessionId);
         }
     }
 }
