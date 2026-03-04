@@ -19,13 +19,33 @@ var storagePath = builder.Configuration.GetValue<string>("StoragePath")
     ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
 var maxUploadSizeMb = builder.Configuration.GetValue<long>("MaxUploadSizeMB", 200);
 
-// Shared singletons — all in-process, no cross-service coordination needed
+// Shared singletons -- all in-process, no cross-service coordination needed
 builder.Services.AddSingleton<IPhotoStore>(new JsonPhotoStore(storagePath));
 builder.Services.AddSingleton<IJobStore>(new JsonJobStore(storagePath));
 builder.Services.AddSingleton<ISessionStore>(new JsonSessionStore(storagePath));
 builder.Services.AddSingleton<IJobQueue, InMemoryJobQueue>();
-builder.Services.AddSingleton<IImagePipeline, StubPipeline>();
-builder.Services.AddSingleton<IPromptRefiner, StubPromptRefiner>();
+
+// Image pipeline: use SkiaSharp-based pipeline for real processing,
+// fall back to stub when Pipeline config is set to "stub"
+var pipelineMode = builder.Configuration.GetValue<string>("Pipeline") ?? "skia";
+if (pipelineMode.Equals("stub", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IImagePipeline, StubPipeline>();
+else
+    builder.Services.AddSingleton<IImagePipeline, SkiaImagePipeline>();
+
+// Prompt refiner: use OpenAI when API key is configured, otherwise stub
+var openAiKey = builder.Configuration.GetValue<string>("OpenAI:ApiKey");
+var openAiModel = builder.Configuration.GetValue<string>("OpenAI:Model") ?? "gpt-4o-mini";
+if (!string.IsNullOrWhiteSpace(openAiKey))
+{
+    builder.Services.AddHttpClient();
+    builder.Services.AddSingleton<IPromptRefiner>(sp =>
+        new OpenAIPromptRefiner(sp.GetRequiredService<IHttpClientFactory>().CreateClient(), openAiKey, openAiModel));
+}
+else
+{
+    builder.Services.AddSingleton<IPromptRefiner, StubPromptRefiner>();
+}
 
 // Background worker for processing jobs
 builder.Services.AddHostedService<PhotoProcessingWorker>();

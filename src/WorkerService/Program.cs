@@ -10,7 +10,13 @@ var storagePath = builder.Configuration.GetValue<string>("StoragePath") ?? Path.
 builder.Services.AddSingleton<IPhotoStore>(new JsonPhotoStore(storagePath));
 builder.Services.AddSingleton<IJobStore>(new JsonJobStore(storagePath));
 builder.Services.AddSingleton<IJobQueue, InMemoryJobQueue>();
-builder.Services.AddSingleton<IImagePipeline, StubPipeline>();
+
+var pipelineMode = builder.Configuration.GetValue<string>("Pipeline") ?? "skia";
+if (pipelineMode.Equals("stub", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IImagePipeline, StubPipeline>();
+else
+    builder.Services.AddSingleton<IImagePipeline, SkiaImagePipeline>();
+
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
