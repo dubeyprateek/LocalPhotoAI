@@ -12,8 +12,7 @@ public class StubPipeline : IImagePipeline
     {
         Directory.CreateDirectory(outputDir);
 
-        var extension = Path.GetExtension(inputPath);
-        var outputPath = Path.Combine(outputDir, $"edited{extension}");
+        var outputPath = Path.Combine(outputDir, Path.GetFileName(inputPath));
 
         using var sourceStream = File.OpenRead(inputPath);
         using var destStream = File.Create(outputPath);

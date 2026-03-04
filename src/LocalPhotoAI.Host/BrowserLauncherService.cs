@@ -37,7 +37,7 @@ public class BrowserLauncherService : BackgroundService
 
         var lanIp = NetworkHelper.GetLanIpAddress();
         var port = new Uri(address).Port;
-        var lanUrl = lanIp is not null ? $"http://{lanIp}:{port}" : address;
+        var lanUrl = lanIp is not null ? $"http://{lanIp}:{port}" : $"http://localhost:{port}";
 
         Console.WriteLine();
         Console.WriteLine($"  LocalPhotoAI running at {lanUrl}");
@@ -46,7 +46,7 @@ public class BrowserLauncherService : BackgroundService
 
         try
         {
-            Process.Start(new ProcessStartInfo(address) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(lanUrl) { UseShellExecute = true });
         }
         catch (Exception ex)
         {

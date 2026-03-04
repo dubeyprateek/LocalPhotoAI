@@ -17,7 +17,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 var storagePath = builder.Configuration.GetValue<string>("StoragePath")
     ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
-var maxUploadSizeMb = builder.Configuration.GetValue<long>("MaxUploadSizeMB", 50);
+var maxUploadSizeMb = builder.Configuration.GetValue<long>("MaxUploadSizeMB", 200);
 
 // Shared singletons — all in-process, no cross-service coordination needed
 builder.Services.AddSingleton<IPhotoStore>(new JsonPhotoStore(storagePath));
@@ -52,6 +52,10 @@ app.MapHealthChecks("/health");
 // ?? Upload endpoints (EPIC 2) ????????????????????????????????????????????????
 app.MapPost("/api/uploads", async (HttpRequest request, IPhotoStore photoStore, IJobStore jobStore, IJobQueue jobQueue) =>
 {
+    // Disable request size limit for file uploads
+    var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (sizeFeature is not null) sizeFeature.MaxRequestBodySize = null;
+
     if (!request.HasFormContentType)
         return Results.BadRequest(new { detail = "Expected multipart/form-data." });
 
@@ -159,14 +163,16 @@ app.MapGet("/api/photos/{photoId}/download", async (string photoId, IPhotoStore 
     var version = photo.Versions.LastOrDefault();
     var filePath = version?.FilePath ?? photo.OriginalPath;
 
-    if (!File.Exists(filePath))
+    var fullPath = Path.GetFullPath(filePath);
+    if (!File.Exists(fullPath))
         return Results.NotFound(new { detail = "File not found on disk." });
 
     var fileName = version is not null
-        ? $"{Path.GetFileNameWithoutExtension(photo.OriginalFileName)}_{version.VersionName}{Path.GetExtension(filePath)}"
+        ? $"{Path.GetFileNameWithoutExtension(photo.OriginalFileName)}_{version.VersionName}{Path.GetExtension(fullPath)}"
         : photo.OriginalFileName;
 
-    return Results.File(filePath, "application/octet-stream", fileName);
+    var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+    return Results.File(stream, "application/octet-stream", fileName);
 });
 
 // ?? Connection info & QR (EPIC 8) ??????????????????????????????????????????
@@ -281,6 +287,10 @@ app.MapPost("/api/sessions/{sessionId}/upload", async (string sessionId, HttpReq
     var session = await sessionStore.GetAsync(sessionId);
     if (session is null)
         return Results.NotFound(new { detail = "Session not found." });
+
+    // Disable request size limit for file uploads
+    var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (sizeFeature is not null) sizeFeature.MaxRequestBodySize = null;
 
     if (!request.HasFormContentType)
         return Results.BadRequest(new { detail = "Expected multipart/form-data." });

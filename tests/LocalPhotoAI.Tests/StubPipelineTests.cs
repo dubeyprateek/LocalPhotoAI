@@ -25,7 +25,7 @@ public class StubPipelineTests
 
             Assert.True(result.Success);
             Assert.True(File.Exists(result.OutputPath));
-            Assert.Equal(Path.Combine(outputDir, "edited.jpg"), result.OutputPath);
+            Assert.Equal(Path.Combine(outputDir, "test.jpg"), result.OutputPath);
 
             var outputContent = await File.ReadAllBytesAsync(result.OutputPath);
             Assert.Equal(content, outputContent);

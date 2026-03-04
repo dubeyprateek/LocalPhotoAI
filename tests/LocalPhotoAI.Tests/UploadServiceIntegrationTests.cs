@@ -27,8 +27,15 @@ public class UploadServiceIntegrationTests : IClassFixture<WebApplicationFactory
     public void Dispose()
     {
         _client.Dispose();
-        if (Directory.Exists(_testStoragePath))
-            Directory.Delete(_testStoragePath, recursive: true);
+        try
+        {
+            if (Directory.Exists(_testStoragePath))
+                Directory.Delete(_testStoragePath, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Background worker may still hold file locks; best-effort cleanup.
+        }
     }
 
     [Fact]
