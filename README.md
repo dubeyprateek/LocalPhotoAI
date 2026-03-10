@@ -1,8 +1,58 @@
 ﻿# LocalPhotoAI
 
+# LocalPhotoAI
+
 A local-first, AI-powered photo processing application built with .NET 9.
 
 Upload photos from your desktop or mobile device over your local network, queue them for AI-powered processing, browse results in a web gallery, and download edited images -- all running privately on your own machine with zero cloud dependencies.
+
+---
+
+## How It Works (3 Steps)
+
+```
+1. DESCRIBE          2. UPLOAD              3. DOWNLOAD
++--------------+     +----------------+     +------------------+
+| Type what    | --> | Drop your      | --> | Preview results, |
+| you want:    |     | photos here    |     | select & download|
+| "vintage",   |     | (drag & drop   |     | your edited      |
+| "enhance",   |     |  or tap to     |     | photos           |
+| "warm tones" |     |  browse)       |     |                  |
++--------------+     +----------------+     +------------------+
+```
+
+1. **Describe your edit** -- Type what you want in plain English (e.g., *"make it vintage"*, *"enhance"*, *"warm tones"*, *"grayscale and sharpen"*). Optionally click **Refine Prompt** for AI-powered rewording.
+2. **Upload your photos** -- Drag and drop or tap to select images. They are queued and processed automatically in the background.
+3. **Preview and download** -- Processed images appear as thumbnails in the output gallery. Select the ones you want and download them.
+
+Your input photos stay visible throughout processing. No internet needed -- everything runs on your machine.
+
+---
+
+## Supported Transformations
+
+Type any of these in your prompt. You can combine multiple in one request (e.g., *"grayscale and sharpen"*).
+
+| What You Type | What It Does |
+|---|---|
+| `grayscale`, `greyscale`, `black and white`, `b&w`, `monochrome` | Convert to grayscale |
+| `sepia`, `vintage`, `retro`, `old photo`, `aged` | Apply sepia/vintage tone |
+| `blur 5`, `soft`, `dreamy`, `glow` | Gaussian blur (optional radius) |
+| `sharpen`, `crisp`, `detail` | Sharpen edges |
+| `brighten 20`, `brightness` | Increase brightness (optional percent) |
+| `darken 15` | Decrease brightness |
+| `contrast 30`, `dramatic`, `cinematic` | Adjust contrast |
+| `warm`, `sunset`, `golden` | Warm color shift (boost reds) |
+| `cool`, `cold`, `blue tone` | Cool color shift (boost blues) |
+| `saturate`, `vivid`, `pop`, `vibrant`, `colorful` | Boost color saturation |
+| `enhance`, `improve`, `auto`, `fix`, `optimize` | Auto-enhance (brighten + contrast + sharpen) |
+| `invert`, `negative` | Invert colors |
+| `resize 800x600` | Resize to specific dimensions |
+| `rotate 90` | Rotate by degrees |
+| `flip horizontal`, `mirror` | Flip horizontally |
+| `flip vertical` | Flip vertically |
+
+Unrecognized prompts automatically apply a subtle enhance (brighten + contrast + sharpen) instead of defaulting to grayscale.
 
 ---
 
@@ -32,15 +82,20 @@ The app starts on `http://localhost:5100`, auto-opens your browser, and shows a 
 
 ## What This Project Does
 
+- **Real image processing** -- SkiaSharp-powered pipeline with 15+ transformations: grayscale, sepia, blur, sharpen, warm, cool, saturate, enhance, invert, resize, rotate, flip, and more.
+- **Natural-language prompts** -- Type *"make it vintage"* or *"enhance and sharpen"* -- the system maps your words to the right operations.
+- **AI prompt refinement** -- Optionally connect any OpenAI-compatible API (OpenAI, Groq, Gemini, GitHub Models, Ollama) to intelligently rewrite prompts.
 - **Upload photos** -- Drag-and-drop or tap-to-select images from any device on your LAN (supports `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`, `.heic`, `.heif`, `.tiff`, `.tif`).
-- **Automatic job queuing** -- Every upload is automatically queued for background AI processing.
+- **Automatic job queuing** -- Every upload is automatically queued for background processing.
 - **Track processing status** -- Monitor job progress in real time (Queued -> Processing -> Succeeded / Failed).
 - **Browse your gallery** -- View all uploaded and processed photos in the web UI, with auto-refresh.
-- **Download results** -- Download the latest processed version of any photo, or the original if processing is pending.
+- **Input gallery persists** -- Uploaded thumbnails remain visible throughout processing.
+- **Output preview** -- Processed images show as thumbnails; unfinished images show a placeholder.
+- **Download results** -- Select and download individual or all processed photos.
 - **Connect from mobile** -- Scan a QR code or use the LAN URL to access the app from your phone/tablet.
 - **Run fully offline** -- Everything runs locally. No internet, no cloud accounts, no data leaving your machine.
 - **Create editing sessions** -- Describe your desired edit with a natural-language prompt, and the app organizes uploads and outputs under a session.
-- **Prompt refinement** -- The system refines your prompt text and generates a title for each session.
+- **Session management** -- Delete sessions and their files, auto-cleanup downloaded sessions on new session start.
 
 ---
 
@@ -51,6 +106,8 @@ The app starts on `http://localhost:5100`, auto-opens your browser, and shows a 
 | Runtime | .NET 9 |
 | Language | C# 13 |
 | Web framework | ASP.NET Core Minimal APIs |
+| Image processing | SkiaSharp (SkiaImagePipeline) |
+| AI prompt refinement | OpenAI-compatible API (OpenAI, Groq, Gemini, GitHub Models, Ollama) |
 | API Gateway | YARP (Yet Another Reverse Proxy) |
 | Background processing | `BackgroundService` |
 | Job queue | `System.Threading.Channels` |
@@ -98,6 +155,7 @@ LocalPhotoAI.Host (port 5100)
 |-- GET  /api/sessions/{id}             -- Get session
 |-- GET  /api/sessions/{id}/results     -- Session output photos
 |-- GET  /api/sessions/{id}/qr          -- Session QR code
+|-- DELETE /api/sessions/{id}           -- Delete session & files
 |-- GET  /api/jobs                      -- List all jobs
 |-- GET  /api/jobs/{id}                 -- Get job status
 |-- GET  /api/photos                    -- List all photos
@@ -173,9 +231,11 @@ LocalPhotoAI/
 |   |   |   |-- QueueMessage.cs         # Queue message DTO
 |   |   |-- Pipelines/
 |   |   |   |-- IImagePipeline.cs       # Image processing pipeline interface
+|   |   |   |-- SkiaImagePipeline.cs    # SkiaSharp image pipeline (15+ transforms)
 |   |   |   |-- StubPipeline.cs         # Stub pipeline (copies file as-is)
 |   |   |   |-- IPromptRefiner.cs       # Prompt refinement interface
-|   |   |   |-- StubPromptRefiner.cs    # Stub refiner (template wrapping)
+|   |   |   |-- OpenAIPromptRefiner.cs  # OpenAI-compatible prompt refiner
+|   |   |   |-- StubPromptRefiner.cs    # Stub refiner (fallback)
 |   |   |-- Security/
 |   |   |   |-- FileValidation.cs       # Extension allowlist & filename sanitization
 |   |   |-- Middleware/
@@ -207,15 +267,17 @@ LocalPhotoAI/
 |       |-- Worker.cs                    # BackgroundService implementation
 |
 |-- tests/
-    |-- LocalPhotoAI.Tests/
-        |-- FileValidationTests.cs       # Extension & sanitization tests
-        |-- StubPipelineTests.cs         # Pipeline copy tests
-        |-- StubPromptRefinerTests.cs    # Prompt refiner tests
-        |-- InMemoryJobQueueTests.cs     # Queue ordering & concurrency tests
-        |-- JsonStoreTests.cs            # Persistence round-trip tests
-        |-- SessionStoreTests.cs         # Session store tests
-        |-- UploadServiceIntegrationTests.cs  # HTTP integration tests
-        |-- HostIntegrationTests.cs      # Full monolith endpoint tests
+|-- LocalPhotoAI.Tests/
+    |-- SkiaImagePipelineTests.cs    # 59 tests: transforms, parsing, keywords
+    |-- OpenAIPromptRefinerTests.cs  # API fallback, parsing, code fence handling
+    |-- FileValidationTests.cs       # Extension & sanitization tests
+    |-- StubPipelineTests.cs         # Pipeline copy tests
+    |-- StubPromptRefinerTests.cs    # Prompt refiner tests
+    |-- InMemoryJobQueueTests.cs     # Queue ordering & concurrency tests
+    |-- JsonStoreTests.cs            # Persistence round-trip tests
+    |-- SessionStoreTests.cs         # Session store tests
+    |-- UploadServiceIntegrationTests.cs  # HTTP integration tests
+    |-- HostIntegrationTests.cs      # Full monolith endpoint tests
 ```
 
 ### Shared Library -- `LocalPhotoAI.Shared`
@@ -228,8 +290,10 @@ All projects reference this shared library. It contains:
 | `IJobStore` / `JsonJobStore` | Job record persistence (same pattern) |
 | `ISessionStore` / `JsonSessionStore` | Session record persistence (same pattern) |
 | `IJobQueue` / `InMemoryJobQueue` | Producer/consumer job queue using `System.Threading.Channels` |
-| `IImagePipeline` / `StubPipeline` | Pluggable image processing pipeline (stub copies file as-is) |
-| `IPromptRefiner` / `StubPromptRefiner` | Prompt refinement interface (stub wraps user text in a template) |
+| `IImagePipeline` / `SkiaImagePipeline` | SkiaSharp image pipeline with 15+ prompt-driven transforms (grayscale, sepia, blur, sharpen, warm, cool, saturate, enhance, invert, resize, rotate, flip) |
+| `StubPipeline` | Stub pipeline (copies file as-is, for testing) |
+| `IPromptRefiner` / `OpenAIPromptRefiner` | AI prompt refiner using any OpenAI-compatible API (configurable base URL) |
+| `StubPromptRefiner` | Stub refiner fallback (template wrapping, no AI required) |
 | `FileValidation` | Filename sanitization (strips path traversal) and extension allowlist |
 | `CorrelationIdMiddleware` | Injects `X-Correlation-Id` header for end-to-end request tracing |
 
@@ -341,6 +405,35 @@ Settings can be overridden via `appsettings.json`, environment variables, or com
 | `StoragePath` | `./storage` | Directory for photos, metadata JSON files |
 | `MaxUploadSizeMB` | `50` | Maximum upload file size in MB |
 | `Urls` | `http://0.0.0.0:5100` | Kestrel listening address and port |
+| `Pipeline` | `skia` | Image pipeline (`skia` or `stub`) |
+| `AI:ApiKey` | *(none)* | API key for AI prompt refinement (falls back to stub if unset) |
+| `AI:Model` | `gpt-4o-mini` | Model name for the AI provider |
+| `AI:BaseUrl` | `https://api.openai.com/v1/chat/completions` | Chat completions endpoint URL |
+| `OpenAI:ApiKey` | *(none)* | Legacy alias for `AI:ApiKey` |
+| `OpenAI:Model` | *(none)* | Legacy alias for `AI:Model` |
+
+### AI Provider Examples
+
+The prompt refiner works with any OpenAI-compatible chat completions API:
+
+```jsonc
+// appsettings.json -- OpenAI
+{ "AI": { "ApiKey": "sk-...", "Model": "gpt-4o-mini" } }
+
+// Groq (free tier: 30 RPM / 14,400 req/day)
+{ "AI": { "ApiKey": "gsk_...", "Model": "llama-3.3-70b-versatile", "BaseUrl": "https://api.groq.com/openai/v1/chat/completions" } }
+
+// Google Gemini (free tier: 15 RPM / 1M tokens/day)
+{ "AI": { "ApiKey": "AIza...", "Model": "gemini-2.0-flash", "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" } }
+
+// GitHub Models (free with GitHub account)
+{ "AI": { "ApiKey": "ghp_...", "Model": "gpt-4o-mini", "BaseUrl": "https://models.inference.ai.azure.com/chat/completions" } }
+
+// Ollama (local, free, no API key needed -- use any non-empty string)
+{ "AI": { "ApiKey": "ollama", "Model": "llama3.2", "BaseUrl": "http://localhost:11434/v1/chat/completions" } }
+```
+
+No AI key? No problem -- the app works fully offline with the stub refiner and the built-in keyword parser.
 
 **Examples:**
 
@@ -397,6 +490,7 @@ dotnet run --project src/LocalPhotoAI.Host -- --StoragePath "/data/photos"
 | `GET` | `/api/sessions/{sessionId}` | Get a specific session |
 | `GET` | `/api/sessions/{sessionId}/results` | Get output photos for a session |
 | `GET` | `/api/sessions/{sessionId}/qr` | QR code (SVG) linking to session results |
+| `DELETE` | `/api/sessions/{sessionId}` | Delete session, photos, jobs, and files |
 
 **Session statuses:** `Draft` -> `Processing` -> `Completed` / `Failed`
 
@@ -472,6 +566,8 @@ dotnet test
 
 | Test Class | What It Covers |
 |---|---|
+| `SkiaImagePipelineTests` | 59 tests: all transforms, keyword parsing, variant recognition, numeric args, multi-op combos |
+| `OpenAIPromptRefinerTests` | API key fallback, HTTP failure fallback, JSON parsing, code fence stripping |
 | `FileValidationTests` | Extension allowlist, filename sanitization, path traversal prevention |
 | `StubPipelineTests` | File copy pipeline, output directory creation |
 | `StubPromptRefinerTests` | Prompt refinement output, title generation |
@@ -496,7 +592,7 @@ See [`docs/lan-discovery.md`](docs/lan-discovery.md) for detailed connectivity i
 
 ## Extending the Image Pipeline
 
-The `IImagePipeline` interface is the extension point for adding real AI processing:
+The `IImagePipeline` interface is the extension point for image processing:
 
 ```csharp
 public interface IImagePipeline
@@ -506,11 +602,14 @@ public interface IImagePipeline
 }
 ```
 
-The current `StubPipeline` copies the file as-is. To add real processing:
+The default `SkiaImagePipeline` handles 15+ transformations via SkiaSharp. To add a custom pipeline:
 
 1. Create a new class implementing `IImagePipeline`
 2. Register it in DI: `builder.Services.AddSingleton<IImagePipeline, YourPipeline>()`
-3. The worker will automatically use it for all new jobs
+3. Set `Pipeline` config to your pipeline name
+4. The worker will automatically use it for all new jobs
+
+Set `Pipeline` to `stub` in config to use the no-op `StubPipeline` (copies files as-is, useful for testing).
 
 ---
 
