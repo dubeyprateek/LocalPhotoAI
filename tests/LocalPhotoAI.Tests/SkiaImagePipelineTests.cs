@@ -179,19 +179,23 @@ public class SkiaImagePipelineTests : IDisposable
     // -- ParseOperations unit tests ------------------------------------------
 
     [Fact]
-    public void ParseOperations_NullPrompt_DefaultsToGrayscale()
+    public void ParseOperations_NullPrompt_DefaultsToEnhance()
     {
         var ops = SkiaImagePipeline.ParseOperations(null);
-        Assert.Single(ops);
-        Assert.Equal(SkiaImagePipeline.OperationType.Grayscale, ops[0].Type);
+        Assert.Equal(3, ops.Count);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Brighten);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Contrast);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sharpen);
     }
 
     [Fact]
-    public void ParseOperations_EmptyPrompt_DefaultsToGrayscale()
+    public void ParseOperations_EmptyPrompt_DefaultsToEnhance()
     {
         var ops = SkiaImagePipeline.ParseOperations("  ");
-        Assert.Single(ops);
-        Assert.Equal(SkiaImagePipeline.OperationType.Grayscale, ops[0].Type);
+        Assert.Equal(3, ops.Count);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Brighten);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Contrast);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sharpen);
     }
 
     [Fact]

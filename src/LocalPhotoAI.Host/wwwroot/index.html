@@ -100,7 +100,31 @@
                 <!-- Step 1: Prompt -->
                 <div id="step1">
                     <label for="promptInput"><strong>What do you want to do with your photos?</strong></label>
-                    <textarea id="promptInput" placeholder="e.g., enhance, vintage, warm, vivid, grayscale, blur, sharpen, dramatic, cool, invert, rotate 90, resize 800x600..."></textarea>
+                    <textarea id="promptInput" placeholder="Type a prompt from the examples below, or combine several..."></textarea>
+                    <details style="margin-top:0.5rem;font-size:0.85rem;">
+                        <summary style="cursor:pointer;color:#4a90d9;font-weight:600;">Show supported prompts</summary>
+                        <table style="width:100%;border-collapse:collapse;margin-top:0.5rem;font-size:0.82rem;">
+                            <thead><tr style="text-align:left;border-bottom:1px solid #ddd;"><th style="padding:4px 8px;">Prompt</th><th style="padding:4px 8px;">Effect</th></tr></thead>
+                            <tbody>
+                                <tr><td style="padding:3px 8px;"><code>enhance</code></td><td style="padding:3px 8px;">Auto-improve (brighten + contrast + sharpen)</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>vintage</code></td><td style="padding:3px 8px;">Sepia / vintage tone</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>warm</code></td><td style="padding:3px 8px;">Warm color shift (boost reds)</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>cool</code></td><td style="padding:3px 8px;">Cool color shift (boost blues)</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>vivid</code></td><td style="padding:3px 8px;">Boost color saturation</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>grayscale</code></td><td style="padding:3px 8px;">Convert to black &amp; white</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>blur 5</code></td><td style="padding:3px 8px;">Gaussian blur (radius optional)</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>sharpen</code></td><td style="padding:3px 8px;">Sharpen edges</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>brighten 20</code></td><td style="padding:3px 8px;">Increase brightness</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>darken 15</code></td><td style="padding:3px 8px;">Decrease brightness</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>dramatic</code></td><td style="padding:3px 8px;">High contrast</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>invert</code></td><td style="padding:3px 8px;">Invert colors</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>rotate 90</code></td><td style="padding:3px 8px;">Rotate by degrees</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>resize 800x600</code></td><td style="padding:3px 8px;">Resize to dimensions</td></tr>
+                                <tr><td style="padding:3px 8px;"><code>flip horizontal</code></td><td style="padding:3px 8px;">Mirror image</td></tr>
+                            </tbody>
+                        </table>
+                        <p style="margin-top:0.4rem;color:#666;">Combine multiple: <code>grayscale and sharpen</code></p>
+                    </details>
                     <div class="btn-group">
                         <button id="refineBtn">Refine Prompt</button>
                     </div>
@@ -215,6 +239,8 @@
         if (viewSessionId) {
             document.getElementById('mainView').classList.add('hidden');
             document.getElementById('sessionView').classList.remove('hidden');
+            lastGridSignature = '';
+            mobilePollingDone = false;
             loadSessionResults(viewSessionId, true);
         }
 
@@ -370,6 +396,9 @@
             loadSessionQr(sessionId);
         }
 
+        let lastGridSignature = '';
+        let mobilePollingDone = false;
+
         async function loadSessionResults(sessionId, isMobileView) {
             try {
                 const res = await fetch(`/api/sessions/${sessionId}/results`);
@@ -393,36 +422,40 @@
                 const photos = data.photos || [];
                 const outputPhotos = photos.filter(p => p.hasOutput);
 
-                // Show download toolbar when there are output photos
-                if (outputPhotos.length > 0) {
-                    toolbarEl.style.display = 'flex';
-                } else {
-                    toolbarEl.style.display = 'none';
+                toolbarEl.style.display = outputPhotos.length > 0 ? 'flex' : 'none';
+
+                // Build a signature to avoid unnecessary DOM rebuilds (prevents flicker)
+                const sig = photos.map(p => p.photoId + ':' + (p.hasOutput ? '1' : '0')).join(',') + '|' + data.status;
+                if (sig !== lastGridSignature) {
+                    lastGridSignature = sig;
+
+                    gridEl.innerHTML = photos.map(p => {
+                        const isSelected = selectedPhotos.has(p.photoId);
+                        const selectedClass = isSelected ? ' selected' : '';
+                        const thumbUrl = p.downloadUrl;
+                        if (p.hasOutput) {
+                            return '<div class="result-item' + selectedClass + '" data-photo-id="' + p.photoId + '" data-download-url="' + thumbUrl + '" onclick="togglePhotoSelection(this)">' +
+                                '<img src="' + thumbUrl + '" alt="' + p.originalFileName + '" loading="lazy" />' +
+                                '<div class="file-name">' + p.originalFileName + '</div>' +
+                                '<div class="select-check">' + (isSelected ? 'Selected' : 'Tap to select') + '</div>' +
+                            '</div>';
+                        } else {
+                            return '<div class="result-item">' +
+                                '<div class="placeholder-thumb">&#9881;</div>' +
+                                '<div class="file-name">' + p.originalFileName + '</div>' +
+                                '<span class="badge processing">Processing</span>' +
+                            '</div>';
+                        }
+                    }).join('');
+
+                    updateSelectionCount(isMobileView);
                 }
 
-                gridEl.innerHTML = photos.map(p => {
-                    const isSelected = selectedPhotos.has(p.photoId);
-                    const selectedClass = isSelected ? ' selected' : '';
-                    const thumbUrl = p.downloadUrl;
-                    if (p.hasOutput) {
-                        return '<div class="result-item' + selectedClass + '" data-photo-id="' + p.photoId + '" data-download-url="' + thumbUrl + '" onclick="togglePhotoSelection(this)">' +
-                            '<img src="' + thumbUrl + '" alt="' + p.originalFileName + '" loading="lazy" />' +
-                            '<div class="file-name">' + p.originalFileName + '</div>' +
-                            '<div class="select-check">' + (isSelected ? 'Selected' : 'Tap to select') + '</div>' +
-                        '</div>';
-                    } else {
-                        return '<div class="result-item">' +
-                            '<div class="placeholder-thumb">&#9881;</div>' +
-                            '<div class="file-name">' + p.originalFileName + '</div>' +
-                            '<span class="badge processing">Processing</span>' +
-                        '</div>';
-                    }
-                }).join('');
+                const isDone = data.status === 'Completed' || data.status === 'Failed';
 
-                updateSelectionCount(isMobileView);
-
-                if (data.status === 'Completed' || data.status === 'Failed') {
-                    if (sessionPollTimer) clearInterval(sessionPollTimer);
+                if (isDone) {
+                    if (sessionPollTimer) { clearInterval(sessionPollTimer); sessionPollTimer = null; }
+                    mobilePollingDone = true;
                     if (!isMobileView) {
                         document.getElementById('processingStatus').classList.add('hidden');
                         document.getElementById('sessionResults').classList.remove('hidden');
@@ -433,7 +466,8 @@
                     document.getElementById('sessionResults').classList.remove('hidden');
                 }
 
-                if (isMobileView && (data.status === 'Processing' || data.status === 'Uploading')) {
+                // Mobile polling: only continue if not done yet
+                if (isMobileView && !isDone && !mobilePollingDone) {
                     setTimeout(() => loadSessionResults(sessionId, true), 3000);
                 }
             } catch { /* retry on next interval */ }
@@ -527,6 +561,8 @@
             document.getElementById('inputPreviews').innerHTML = '';
             document.getElementById('inputGallery').classList.add('hidden');
             promptInput.value = '';
+            lastGridSignature = '';
+            mobilePollingDone = false;
             document.getElementById('refinedSection').classList.add('hidden');
             document.getElementById('sessionQrSection').classList.add('hidden');
             document.getElementById('downloadToolbar').style.display = 'none';
@@ -580,6 +616,8 @@
             downloadedPhotos.clear();
             document.getElementById('inputPreviews').innerHTML = '';
             document.getElementById('inputGallery').classList.add('hidden');
+            lastGridSignature = '';
+            mobilePollingDone = false;
             setStep(3);
             startPollingSession(sessionId);
         }

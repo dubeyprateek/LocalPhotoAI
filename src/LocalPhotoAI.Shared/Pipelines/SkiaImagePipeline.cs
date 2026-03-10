@@ -86,7 +86,10 @@ public class SkiaImagePipeline : IImagePipeline
         var ops = new List<ImageOperation>();
         if (string.IsNullOrWhiteSpace(prompt))
         {
-            ops.Add(new ImageOperation(OperationType.Grayscale));
+            // Default to subtle enhance instead of grayscale
+            ops.Add(new ImageOperation(OperationType.Brighten, 10f));
+            ops.Add(new ImageOperation(OperationType.Contrast, 20f));
+            ops.Add(new ImageOperation(OperationType.Sharpen));
             return ops;
         }
 
