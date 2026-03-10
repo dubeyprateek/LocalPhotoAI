@@ -33,14 +33,22 @@ if (pipelineMode.Equals("stub", StringComparison.OrdinalIgnoreCase))
 else
     builder.Services.AddSingleton<IImagePipeline, SkiaImagePipeline>();
 
-// Prompt refiner: use OpenAI when API key is configured, otherwise stub
-var openAiKey = builder.Configuration.GetValue<string>("OpenAI:ApiKey");
-var openAiModel = builder.Configuration.GetValue<string>("OpenAI:Model") ?? "gpt-4o-mini";
-if (!string.IsNullOrWhiteSpace(openAiKey))
+// Prompt refiner: use OpenAI-compatible API when configured, otherwise stub.
+// Works with OpenAI, Groq, Google Gemini, GitHub Models, Ollama, etc.
+var aiApiKey = builder.Configuration.GetValue<string>("AI:ApiKey")
+    ?? builder.Configuration.GetValue<string>("OpenAI:ApiKey");
+var aiModel = builder.Configuration.GetValue<string>("AI:Model")
+    ?? builder.Configuration.GetValue<string>("OpenAI:Model")
+    ?? "gpt-4o-mini";
+var aiBaseUrl = builder.Configuration.GetValue<string>("AI:BaseUrl")
+    ?? "https://api.openai.com/v1/chat/completions";
+if (!string.IsNullOrWhiteSpace(aiApiKey))
 {
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IPromptRefiner>(sp =>
-        new OpenAIPromptRefiner(sp.GetRequiredService<IHttpClientFactory>().CreateClient(), openAiKey, openAiModel));
+        new OpenAIPromptRefiner(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+            aiApiKey, aiModel, aiBaseUrl));
 }
 else
 {

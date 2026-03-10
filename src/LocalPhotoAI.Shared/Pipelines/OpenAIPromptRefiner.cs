@@ -6,9 +6,12 @@ using System.Text.RegularExpressions;
 namespace LocalPhotoAI.Shared.Pipelines;
 
 /// <summary>
-/// Prompt refiner that uses the OpenAI Chat Completions API to turn a
+/// Prompt refiner that uses any OpenAI-compatible Chat Completions API to turn a
 /// natural-language user prompt into a structured image-editing instruction
 /// and a short session title.
+///
+/// Works with OpenAI, Groq, Google Gemini, GitHub Models, Ollama, LM Studio,
+/// or any provider that exposes the /v1/chat/completions format.
 ///
 /// Falls back to <see cref="StubPromptRefiner"/> behavior when the API key
 /// is not configured or the API call fails.
@@ -18,13 +21,14 @@ public partial class OpenAIPromptRefiner : IPromptRefiner
     private readonly HttpClient _http;
     private readonly string? _apiKey;
     private readonly string _model;
+    private readonly string _baseUrl;
     private readonly StubPromptRefiner _fallback = new();
 
     private const string SystemPrompt =
         """
         You are an image-editing assistant. The user will describe an image transformation they want.
         Your job is to:
-        1. Rewrite their request as a clear, concise image-processing instruction.
+        1. Rewrite their request as a clear, concise image-processing instruction using ONLY the supported keywords.
         2. Generate a short (2-4 word) kebab-case title for the editing session.
 
         Respond ONLY with JSON in this exact format (no markdown, no extra text):
@@ -32,17 +36,31 @@ public partial class OpenAIPromptRefiner : IPromptRefiner
 
         Supported transformations the system can apply:
         grayscale, sepia, blur (with optional radius), sharpen, brighten, darken,
-        contrast, invert/negative, resize WxH, rotate degrees, flip horizontal, flip vertical.
+        contrast, invert/negative, warm, cool, saturate, enhance,
+        resize WxH, rotate degrees, flip horizontal, flip vertical.
 
-        If the user asks for something not in this list, map it to the closest supported
-        transformation and mention what you chose in the refined prompt.
+        Common mappings:
+        - vintage/retro/old photo/aged -> sepia
+        - dramatic/cinematic -> contrast 40, darken 10
+        - soft/dreamy/glow -> blur 2, brighten 5
+        - vivid/pop/vibrant/colorful -> saturate
+        - crisp/detail -> sharpen
+        - sunset/golden/warmer -> warm
+        - cold/cooler/blue tone -> cool
+        - improve/auto/fix/optimize -> enhance
+        - b&w/monochrome -> grayscale
+        - mirror -> flip horizontal
+
+        Always map to one or more of these keywords. Combine multiple if needed.
         """;
 
-    public OpenAIPromptRefiner(HttpClient httpClient, string? apiKey, string model = "gpt-4o-mini")
+    public OpenAIPromptRefiner(HttpClient httpClient, string? apiKey, string model = "gpt-4o-mini",
+        string baseUrl = "https://api.openai.com/v1/chat/completions")
     {
         _http = httpClient;
         _apiKey = apiKey;
         _model = model;
+        _baseUrl = baseUrl;
     }
 
     public async Task<PromptRefineResult> RefineAsync(string userPrompt, CancellationToken cancellationToken = default)
@@ -52,7 +70,7 @@ public partial class OpenAIPromptRefiner : IPromptRefiner
 
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+            var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl);
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
             request.Content = JsonContent.Create(new
             {

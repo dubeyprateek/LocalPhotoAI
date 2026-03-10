@@ -5,20 +5,24 @@ namespace LocalPhotoAI.Shared.Pipelines;
 /// <summary>
 /// Image processing pipeline powered by SkiaSharp.
 /// Parses the prompt for supported transformation keywords and applies them
-/// in sequence. Falls back to a copy if no recognized operations are found.
+/// in sequence. Unrecognized prompts apply a subtle enhance (brighten + contrast + sharpen).
 ///
 /// Supported prompt keywords:
-///   grayscale / greyscale / black and white
-///   sepia
-///   blur (optionally "blur 5" for radius)
-///   sharpen
+///   grayscale / greyscale / black and white / b&amp;w / monochrome
+///   sepia / vintage / retro / old photo / aged
+///   blur (optionally "blur 5" for radius) / soft / dreamy / glow
+///   sharpen / crisp / detail
 ///   brighten / brightness (optionally "brighten 20" for percent)
 ///   darken (optionally "darken 20" for percent)
-///   contrast (optionally "contrast 30" for percent)
+///   contrast (optionally "contrast 30" for percent) / dramatic / cinematic
 ///   invert / negative
+///   warm / warmer / sunset / golden
+///   cool / cooler / cold / blue tone
+///   saturate / vivid / pop / vibrant / colorful
+///   enhance / improve / auto / fix / optimize
 ///   resize WxH (e.g., "resize 800x600")
 ///   rotate N (e.g., "rotate 90")
-///   flip horizontal / flip vertical
+///   flip horizontal / flip vertical / mirror
 /// </summary>
 public class SkiaImagePipeline : IImagePipeline
 {
@@ -77,7 +81,7 @@ public class SkiaImagePipeline : IImagePipeline
         }
     }
 
-    internal static List<ImageOperation> ParseOperations(string? prompt)
+    public static List<ImageOperation> ParseOperations(string? prompt)
     {
         var ops = new List<ImageOperation>();
         if (string.IsNullOrWhiteSpace(prompt))
@@ -88,44 +92,75 @@ public class SkiaImagePipeline : IImagePipeline
 
         var lower = prompt.ToLowerInvariant();
 
-        if (lower.Contains("grayscale") || lower.Contains("greyscale") || lower.Contains("black and white"))
+        // -- Grayscale variants --
+        if (lower.Contains("grayscale") || lower.Contains("greyscale") || lower.Contains("black and white")
+            || lower.Contains("b&w") || lower.Contains("monochrome"))
             ops.Add(new ImageOperation(OperationType.Grayscale));
 
-        if (lower.Contains("sepia"))
+        // -- Sepia / vintage variants --
+        if (lower.Contains("sepia") || lower.Contains("vintage") || lower.Contains("retro")
+            || lower.Contains("old photo") || lower.Contains("aged"))
             ops.Add(new ImageOperation(OperationType.Sepia));
 
+        // -- Invert --
         if (lower.Contains("invert") || lower.Contains("negative"))
             ops.Add(new ImageOperation(OperationType.Invert));
 
-        // blur with optional radius: "blur 5" or "blur"
-        if (lower.Contains("blur"))
+        // -- Blur / soft variants --
+        if (lower.Contains("blur") || lower.Contains("soft") || lower.Contains("dreamy") || lower.Contains("glow"))
         {
             var radius = ParseNumericArg(lower, "blur", 3f);
             ops.Add(new ImageOperation(OperationType.Blur, radius));
         }
 
-        if (lower.Contains("sharpen"))
+        // -- Sharpen / crisp variants --
+        if (lower.Contains("sharpen") || lower.Contains("crisp") || lower.Contains("detail"))
             ops.Add(new ImageOperation(OperationType.Sharpen));
 
+        // -- Brighten --
         if (lower.Contains("brighten") || lower.Contains("brightness"))
         {
             var amount = ParseNumericArg(lower, lower.Contains("brighten") ? "brighten" : "brightness", 20f);
             ops.Add(new ImageOperation(OperationType.Brighten, amount));
         }
 
+        // -- Darken --
         if (lower.Contains("darken"))
         {
             var amount = ParseNumericArg(lower, "darken", 20f);
             ops.Add(new ImageOperation(OperationType.Darken, amount));
         }
 
-        if (lower.Contains("contrast"))
+        // -- Contrast / dramatic variants --
+        if (lower.Contains("contrast") || lower.Contains("dramatic") || lower.Contains("cinematic"))
         {
             var amount = ParseNumericArg(lower, "contrast", 30f);
             ops.Add(new ImageOperation(OperationType.Contrast, amount));
         }
 
-        // resize WxH: "resize 800x600"
+        // -- Warm tone --
+        if (lower.Contains("warm") || lower.Contains("sunset") || lower.Contains("golden"))
+            ops.Add(new ImageOperation(OperationType.Warm));
+
+        // -- Cool tone --
+        if (lower.Contains("cool") || lower.Contains("cold") || lower.Contains("blue tone"))
+            ops.Add(new ImageOperation(OperationType.Cool));
+
+        // -- Saturate / vivid variants --
+        if (lower.Contains("saturate") || lower.Contains("vivid") || lower.Contains("pop")
+            || lower.Contains("vibrant") || lower.Contains("colorful"))
+            ops.Add(new ImageOperation(OperationType.Saturate));
+
+        // -- Enhance / auto-improve combo --
+        if (lower.Contains("enhance") || lower.Contains("improve") || lower.Contains("auto")
+            || lower.Contains("fix") || lower.Contains("optimize"))
+        {
+            ops.Add(new ImageOperation(OperationType.Brighten, 10f));
+            ops.Add(new ImageOperation(OperationType.Contrast, 20f));
+            ops.Add(new ImageOperation(OperationType.Sharpen));
+        }
+
+        // -- Resize WxH --
         var resizeMatch = System.Text.RegularExpressions.Regex.Match(lower, @"resize\s+(\d+)\s*x\s*(\d+)");
         if (resizeMatch.Success)
         {
@@ -134,22 +169,27 @@ public class SkiaImagePipeline : IImagePipeline
             ops.Add(new ImageOperation(OperationType.Resize, w, h));
         }
 
-        // rotate N: "rotate 90"
+        // -- Rotate --
         if (lower.Contains("rotate"))
         {
             var degrees = ParseNumericArg(lower, "rotate", 90f);
             ops.Add(new ImageOperation(OperationType.Rotate, degrees));
         }
 
-        if (lower.Contains("flip horizontal"))
+        // -- Flip / mirror --
+        if (lower.Contains("flip horizontal") || lower.Contains("mirror"))
             ops.Add(new ImageOperation(OperationType.FlipHorizontal));
 
         if (lower.Contains("flip vertical"))
             ops.Add(new ImageOperation(OperationType.FlipVertical));
 
-        // If nothing was recognized, default to grayscale
+        // If nothing was recognized, apply a subtle enhance instead of grayscale
         if (ops.Count == 0)
-            ops.Add(new ImageOperation(OperationType.Grayscale));
+        {
+            ops.Add(new ImageOperation(OperationType.Brighten, 10f));
+            ops.Add(new ImageOperation(OperationType.Contrast, 20f));
+            ops.Add(new ImageOperation(OperationType.Sharpen));
+        }
 
         return ops;
     }
@@ -160,7 +200,7 @@ public class SkiaImagePipeline : IImagePipeline
         return match.Success && float.TryParse(match.Groups[1].Value, out var val) ? val : defaultValue;
     }
 
-    internal static SKBitmap ApplyOperations(SKBitmap source, List<ImageOperation> operations)
+    public static SKBitmap ApplyOperations(SKBitmap source, List<ImageOperation> operations)
     {
         var current = source;
 
@@ -176,6 +216,9 @@ public class SkiaImagePipeline : IImagePipeline
                 OperationType.Brighten => ApplyColorFilter(current, CreateBrightnessMatrix(op.Param1 / 100f)),
                 OperationType.Darken => ApplyColorFilter(current, CreateBrightnessMatrix(-op.Param1 / 100f)),
                 OperationType.Contrast => ApplyColorFilter(current, CreateContrastMatrix(1f + op.Param1 / 100f)),
+                OperationType.Warm => ApplyColorFilter(current, CreateWarmMatrix()),
+                OperationType.Cool => ApplyColorFilter(current, CreateCoolMatrix()),
+                OperationType.Saturate => ApplyColorFilter(current, CreateSaturateMatrix()),
                 OperationType.Resize => ApplyResize(current, (int)op.Param1, (int)op.Param2),
                 OperationType.Rotate => ApplyRotate(current, op.Param1),
                 OperationType.FlipHorizontal => ApplyFlip(current, horizontal: true),
@@ -204,7 +247,7 @@ public class SkiaImagePipeline : IImagePipeline
         return result;
     }
 
-    internal static float[] CreateGrayscaleMatrix() =>
+    public static float[] CreateGrayscaleMatrix() =>
     [
         0.2126f, 0.7152f, 0.0722f, 0, 0,
         0.2126f, 0.7152f, 0.0722f, 0, 0,
@@ -212,7 +255,7 @@ public class SkiaImagePipeline : IImagePipeline
         0,       0,       0,       1, 0
     ];
 
-    internal static float[] CreateSepiaMatrix() =>
+    public static float[] CreateSepiaMatrix() =>
     [
         0.393f, 0.769f, 0.189f, 0, 0,
         0.349f, 0.686f, 0.168f, 0, 0,
@@ -220,7 +263,7 @@ public class SkiaImagePipeline : IImagePipeline
         0,      0,      0,      1, 0
     ];
 
-    internal static float[] CreateInvertMatrix() =>
+    public static float[] CreateInvertMatrix() =>
     [
         -1,  0,  0, 0, 1,
          0, -1,  0, 0, 1,
@@ -228,7 +271,7 @@ public class SkiaImagePipeline : IImagePipeline
          0,  0,  0, 1, 0
     ];
 
-    internal static float[] CreateBrightnessMatrix(float amount) =>
+    public static float[] CreateBrightnessMatrix(float amount) =>
     [
         1, 0, 0, 0, amount,
         0, 1, 0, 0, amount,
@@ -236,7 +279,7 @@ public class SkiaImagePipeline : IImagePipeline
         0, 0, 0, 1, 0
     ];
 
-    internal static float[] CreateContrastMatrix(float factor)
+    public static float[] CreateContrastMatrix(float factor)
     {
         var t = (1f - factor) / 2f;
         return
@@ -247,6 +290,30 @@ public class SkiaImagePipeline : IImagePipeline
             0,      0,      0,      1, 0
         ];
     }
+
+    public static float[] CreateWarmMatrix() =>
+    [
+        1.2f, 0,    0,    0, 0.05f,
+        0,    1.0f, 0,    0, 0.02f,
+        0,    0,    0.8f, 0, 0,
+        0,    0,    0,    1, 0
+    ];
+
+    public static float[] CreateCoolMatrix() =>
+    [
+        0.85f, 0,    0,    0, 0,
+        0,     1.0f, 0,    0, 0.02f,
+        0,     0,    1.2f, 0, 0.05f,
+        0,     0,    0,    1, 0
+    ];
+
+    public static float[] CreateSaturateMatrix() =>
+    [
+        1.3f,  -0.15f, -0.15f, 0, 0,
+        -0.15f, 1.3f,  -0.15f, 0, 0,
+        -0.15f, -0.15f, 1.3f,  0, 0,
+        0,      0,      0,     1, 0
+    ];
 
     // -- Spatial filters -----------------------------------------------------
 
@@ -338,6 +405,9 @@ public class SkiaImagePipeline : IImagePipeline
         Brighten,
         Darken,
         Contrast,
+        Warm,
+        Cool,
+        Saturate,
         Resize,
         Rotate,
         FlipHorizontal,

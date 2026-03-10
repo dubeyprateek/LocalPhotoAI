@@ -1,4 +1,5 @@
 using LocalPhotoAI.Shared.Pipelines;
+using LocalPhotoAI.Shared.Pipelines;
 using SkiaSharp;
 
 namespace LocalPhotoAI.Tests;
@@ -194,11 +195,13 @@ public class SkiaImagePipelineTests : IDisposable
     }
 
     [Fact]
-    public void ParseOperations_UnrecognizedPrompt_DefaultsToGrayscale()
+    public void ParseOperations_UnrecognizedPrompt_FallsBackToEnhance()
     {
         var ops = SkiaImagePipeline.ParseOperations("make it look like a painting");
-        Assert.Single(ops);
-        Assert.Equal(SkiaImagePipeline.OperationType.Grayscale, ops[0].Type);
+        Assert.Equal(3, ops.Count);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Brighten);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Contrast);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sharpen);
     }
 
     [Fact]
@@ -250,5 +253,167 @@ public class SkiaImagePipelineTests : IDisposable
         Assert.Single(ops);
         Assert.Equal(expectedType, ops[0].Type);
         Assert.Equal(expectedParam, ops[0].Param1);
+    }
+
+    // -- New keyword mapping tests -------------------------------------------
+
+    [Theory]
+    [InlineData("b&w")]
+    [InlineData("monochrome")]
+    public void ParseOperations_AdditionalGrayscaleVariants_Recognized(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Grayscale);
+    }
+
+    [Theory]
+    [InlineData("vintage")]
+    [InlineData("retro")]
+    [InlineData("old photo")]
+    [InlineData("aged")]
+    public void ParseOperations_SepiaVariants_AllRecognized(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sepia);
+    }
+
+    [Theory]
+    [InlineData("warm")]
+    [InlineData("sunset")]
+    [InlineData("golden")]
+    public void ParseOperations_WarmVariants_AllRecognized(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Warm);
+    }
+
+    [Theory]
+    [InlineData("cool")]
+    [InlineData("cold")]
+    [InlineData("blue tone")]
+    public void ParseOperations_CoolVariants_AllRecognized(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Cool);
+    }
+
+    [Theory]
+    [InlineData("saturate")]
+    [InlineData("vivid")]
+    [InlineData("pop")]
+    [InlineData("vibrant")]
+    [InlineData("colorful")]
+    public void ParseOperations_SaturateVariants_AllRecognized(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Saturate);
+    }
+
+    [Theory]
+    [InlineData("enhance")]
+    [InlineData("improve")]
+    [InlineData("auto")]
+    [InlineData("fix")]
+    [InlineData("optimize")]
+    public void ParseOperations_EnhanceVariants_ProduceMultipleOps(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Equal(3, ops.Count);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Brighten);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Contrast);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sharpen);
+    }
+
+    [Theory]
+    [InlineData("soft")]
+    [InlineData("dreamy")]
+    [InlineData("glow")]
+    public void ParseOperations_SoftVariants_MapToBlur(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Blur);
+    }
+
+    [Theory]
+    [InlineData("dramatic")]
+    [InlineData("cinematic")]
+    public void ParseOperations_DramaticVariants_MapToContrast(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Contrast);
+    }
+
+    [Theory]
+    [InlineData("crisp")]
+    [InlineData("detail")]
+    public void ParseOperations_SharpVariants_MapToSharpen(string prompt)
+    {
+        var ops = SkiaImagePipeline.ParseOperations(prompt);
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.Sharpen);
+    }
+
+    [Fact]
+    public void ParseOperations_Mirror_MapsToFlipHorizontal()
+    {
+        var ops = SkiaImagePipeline.ParseOperations("mirror");
+        Assert.Contains(ops, o => o.Type == SkiaImagePipeline.OperationType.FlipHorizontal);
+    }
+
+    // -- RunAsync tests for new operations ------------------------------------
+
+    [Fact]
+    public async Task RunAsync_WithVintagePrompt_AppliesSepia()
+    {
+        var pipeline = new SkiaImagePipeline();
+        var result = await pipeline.RunAsync(_inputPath, _outputDir, "make it vintage");
+
+        Assert.True(result.Success);
+        using var output = SKBitmap.Decode(result.OutputPath);
+        var pixel = output.GetPixel(0, 0);
+        Assert.True(pixel.Red >= pixel.Green);
+        Assert.True(pixel.Green >= pixel.Blue);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithWarmPrompt_ShiftsWarm()
+    {
+        var pipeline = new SkiaImagePipeline();
+        var result = await pipeline.RunAsync(_inputPath, _outputDir, "warm tones");
+
+        Assert.True(result.Success);
+        using var output = SKBitmap.Decode(result.OutputPath);
+        var pixel = output.GetPixel(0, 0);
+        // Warm boosts red, reduces blue
+        Assert.True(pixel.Red > pixel.Blue);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithCoolPrompt_ShiftsCool()
+    {
+        var pipeline = new SkiaImagePipeline();
+        var result = await pipeline.RunAsync(_inputPath, _outputDir, "cool tone");
+
+        Assert.True(result.Success);
+        Assert.True(File.Exists(result.OutputPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_WithEnhancePrompt_Succeeds()
+    {
+        var pipeline = new SkiaImagePipeline();
+        var result = await pipeline.RunAsync(_inputPath, _outputDir, "enhance this photo");
+
+        Assert.True(result.Success);
+        Assert.True(File.Exists(result.OutputPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_WithVividPrompt_Succeeds()
+    {
+        var pipeline = new SkiaImagePipeline();
+        var result = await pipeline.RunAsync(_inputPath, _outputDir, "make it vivid");
+
+        Assert.True(result.Success);
+        Assert.True(File.Exists(result.OutputPath));
     }
 }
